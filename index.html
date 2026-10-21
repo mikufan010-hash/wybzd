@@ -1,0 +1,176 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>week6</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=VT323&family=Archivo+Narrow:wght@700&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Layout: one receiver faceplate. VFD volume readout on top, the balance-beam control below. Single committed dark look. */
+:root{
+  --room:#141412; --plate:#2a2926; --plate-hi:#3a3934; --edge:#0b0b0a;
+  --ink:#d9d4c7; --ink-dim:#8f8a7e; --amber:#ffb53d; --amber-dim:#5a3f12; --vfd:#0a0c0b; --red:#ff5a3c;
+  --display:"VT323", ui-monospace, monospace;
+  --label:"Archivo Narrow", "Arial Narrow", system-ui, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--room);color:var(--ink);font-family:var(--mono);font-size:14px;line-height:1.5;
+  padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:32px 48px}
+.plate{max-width:640px;margin:0 auto;padding:30px 28px 24px;display:flex;flex-direction:column;gap:18px;position:relative;
+  background:linear-gradient(180deg,var(--plate-hi),var(--plate) 40%);border:1px solid var(--edge);border-radius:6px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 24px rgba(0,0,0,.45)}
+.plate::before,.plate::after{content:"";position:absolute;top:10px;width:9px;height:9px;border-radius:50%;
+  background:radial-gradient(circle at 35% 35%,#77736a,#2b2a27)}
+.plate::before{left:10px}.plate::after{right:10px}
+@media (max-width:480px){.plate{padding:28px 16px 20px}}
+header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{font-family:var(--label);font-weight:700;font-size:26px;letter-spacing:.06em;margin:0}
+h1 span{color:var(--amber)}
+.lbl{font-family:var(--label);font-weight:700;text-transform:uppercase;letter-spacing:.14em;font-size:12px;color:var(--ink-dim)}
+.note{margin:0;color:var(--ink-dim);font-size:13px;max-width:60ch}
+
+.vfd{background:var(--vfd);border:1px solid #000;border-radius:4px;padding:14px 18px;box-shadow:inset 0 2px 10px #000;
+  display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 20px;align-items:center;color:var(--amber);font-family:var(--display)}
+.digits{font-size:88px;line-height:.8;text-shadow:0 0 8px rgba(255,181,61,.55),0 0 22px rgba(255,181,61,.25);font-variant-numeric:tabular-nums}
+.digits .ghost{color:var(--amber-dim);text-shadow:none}
+.meter{display:grid;grid-template-columns:repeat(20,1fr);gap:3px;height:30px}
+.meter i{background:var(--amber-dim);border-radius:1px}
+.meter i.on{background:var(--amber);box-shadow:0 0 5px rgba(255,181,61,.6)}
+.meter i.on.hot{background:var(--red);box-shadow:0 0 5px rgba(255,90,60,.6)}
+.foot{grid-column:1/-1;font-size:20px;opacity:.9;min-height:1.2em}
+
+canvas{display:block;width:100%;height:220px;touch-action:none;cursor:grab;
+  background:var(--vfd);border:1px solid #000;border-radius:4px;box-shadow:inset 0 2px 8px #000}
+canvas:active{cursor:grabbing}
+canvas:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{font-family:var(--label);font-weight:700;letter-spacing:.12em;text-transform:uppercase;font-size:12px;color:var(--ink);cursor:pointer;
+  background:linear-gradient(180deg,#4a4842,#2f2e2a);border:1px solid var(--edge);border-radius:4px;padding:9px 14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 2px 0 #000}
+.btn:active{transform:translateY(1px)}
+.btn[aria-pressed="true"]{color:var(--amber)}
+.btn:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+</style>
+
+<main class="plate">
+  <header>
+    <h1>wrost <span>volume controller</span></h1>
+    <span class="lbl">try Balance the Beam </span>
+  </header>
+
+  <div class="vfd" role="status" aria-live="polite">
+    <div class="digits" id="digits"><span class="ghost">0</span>50</div>
+    <div class="meter" id="meter" aria-hidden="true"></div>
+    <div class="foot" id="foot">BEAM IDLE</div>
+  </div>
+
+  <p class="note"></p>
+  <canvas id="beam" tabindex="0" aria-label="Balance beam volume control. Use left and right arrow keys to tilt."></canvas>
+
+  <div class="row">
+    <button class="btn" id="tone" type="button" aria-pressed="false">Test tone</button>
+    <span class="lbl">Tip: holding still is harder than it looks</span>
+  </div>
+</main>
+
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const AMBER = '#ffb53d', DIM = '#5a3f12', INK = '#8f8a7e';
+
+/* readout */
+const meter = $('meter');
+for (let i = 0; i < 20; i++) meter.appendChild(document.createElement('i'));
+let shown = -1;
+function setVolume(v) {
+  v = Math.round(clamp(v, 0, 100));
+  if (v === shown) return; shown = v;
+  const s = String(v).padStart(3, '0'), lead = s.match(/^0*/)[0].slice(0, 2);
+  $('digits').innerHTML = `<span class="ghost">${lead}</span>${s.slice(lead.length)}`;
+  [...meter.children].forEach((el, i) => { el.classList.toggle('on', i < Math.round(v / 5)); el.classList.toggle('hot', i >= 16); });
+  if (tone) tone.g.gain.setTargetAtTime(v / 100 * .2, tone.ctx.currentTime, .03);
+}
+
+/* test tone (continuous, follows the ball) */
+let tone = null;
+$('tone').addEventListener('click', e => {
+  try {
+    if (tone) { tone.o.stop(); tone.ctx.close(); tone = null; }
+    else {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'triangle'; o.frequency.value = 440; g.gain.value = 0;
+      o.connect(g).connect(ctx.destination); o.start();
+      tone = { ctx, o, g };
+      g.gain.setTargetAtTime(shown / 100 * .2, ctx.currentTime, .03);
+    }
+  } catch (err) {}
+  e.currentTarget.setAttribute('aria-pressed', !!tone);
+  e.currentTarget.textContent = tone ? 'Stop tone' : 'Test tone';
+});
+
+/* balance beam */
+const c = $('beam');
+const st = { a: 0, target: 0, s: 0.5, v: 0, drag: false, touched: false };
+const tiltFromX = x => { st.target = clamp((x - c._w / 2) / (c._w / 2), -1, 1) * 0.32; };
+const px = e => e.clientX - c.getBoundingClientRect().left;
+c.addEventListener('pointerdown', e => { st.drag = st.touched = true; c.setPointerCapture(e.pointerId); tiltFromX(px(e)); });
+c.addEventListener('pointermove', e => { if (st.drag) tiltFromX(px(e)); });
+c.addEventListener('pointerup', () => st.drag = false);
+c.addEventListener('pointercancel', () => st.drag = false);
+c.addEventListener('keydown', e => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault(); st.touched = true;
+  st.target = clamp(st.target + (e.key === 'ArrowRight' ? .03 : -.03), -.32, .32);
+});
+
+function fit() {
+  const r = c.getBoundingClientRect(), d = window.devicePixelRatio || 1;
+  if (c._w !== r.width || c._h !== r.height) { c.width = Math.round(r.width * d); c.height = Math.round(r.height * d); c._w = r.width; c._h = r.height; }
+  const ctx = c.getContext('2d'); ctx.setTransform(d, 0, 0, d, 0, 0);
+  return { ctx, w: r.width, h: r.height };
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.033, (now - last) / 1000), t = now / 1000; last = now;
+  st.a += (st.target - st.a) * Math.min(1, dt * 8);
+  const quake = reduce ? 0 : Math.sin(t * 1.3) * .012 + Math.sin(t * 3.7 + 1) * .006;
+  const eff = st.a + quake;
+  st.v += 2.4 * Math.sin(eff) * dt;
+  st.v *= 1 - .5 * dt;
+  st.s += st.v * dt;
+  if (st.s < 0) { st.s = 0; st.v = -st.v * .35; }
+  if (st.s > 1) { st.s = 1; st.v = -st.v * .35; }
+  setVolume(st.s * 100);
+  if (st.touched) $('foot').textContent = Math.abs(st.v) < .01 ? 'BALANCED. SOMEHOW.' : (st.v > 0 ? 'ROLLING LOUDER…' : 'ROLLING QUIETER…');
+
+  const { ctx, w, h } = fit();
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2, cy = h * .58, L = w * .42;
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(eff);
+  ctx.fillStyle = '#3a3934'; ctx.fillRect(-L, -3, 2 * L, 6);
+  ctx.font = '16px "VT323", monospace'; ctx.textAlign = 'center';
+  for (let i = 0; i <= 10; i++) {
+    const x = -L + 2 * L * i / 10;
+    ctx.fillStyle = i % 5 ? DIM : AMBER; ctx.fillRect(x - .5, 3, 1, i % 5 ? 5 : 9);
+    if (i % 5 === 0) ctx.fillText(String(i * 10), x, 26);
+  }
+  const bx = -L + 2 * L * st.s;
+  const g = ctx.createRadialGradient(bx - 3, -14, 1, bx, -11, 11);
+  g.addColorStop(0, '#fff2d0'); g.addColorStop(1, AMBER);
+  ctx.fillStyle = g; ctx.shadowColor = AMBER; ctx.shadowBlur = 12;
+  ctx.beginPath(); ctx.arc(bx, -11, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#4a4842';
+  ctx.beginPath(); ctx.moveTo(cx, cy + 4); ctx.lineTo(cx - 18, h - 16); ctx.lineTo(cx + 18, h - 16); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = INK; ctx.fillRect(16, h - 16, w - 32, 1);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>
